@@ -30,54 +30,54 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-#      - name: Launch Temporary EC2 Instance for Testing
-#        run: |
-#          echo "Launching temporary EC2 instance..."
-#
-#          INSTANCE_DETAILS=$(aws ec2 run-instances \
-#            --image-id ami-05b10e08d247fb927 \
-#            --instance-type t2.medium \
-#            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
-#            --key-name j_ \
-#            --security-group-ids sg-050ccad9abad062ad \
-#            --query 'Instances[0].[InstanceId,PublicIpAddress]' \
-#            --output text)
-#
-#          INSTANCE_ID=$(echo "$INSTANCE_DETAILS" | awk '{print $1}')
-#          PUBLIC_IP=$(echo "$INSTANCE_DETAILS" | awk '{print $2}')
-#
-#          echo "Instance ID: $INSTANCE_ID"
-#          echo "Public IP: $PUBLIC_IP"
-#
-#          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-#          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-#
-#          echo "Waiting for EC2 to be in 'running' state..."
-#          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-#
-#          echo "EC2 Instance is now running."
-#
-#
-#
-#      - name: Get EC2 Public IP
-#        run: |
-#          echo "Fetching EC2 Public IP..."
-#          PUBLIC_IP=$(aws ec2 describe-instances \
-#            --instance-ids $INSTANCE_ID \
-#            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-#            --output text)
-#
-#          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
-#            echo "Error: Could not fetch EC2 Public IP. Exiting."
-#            exit 1
-#          fi
-#
-#          echo "EC2 Public IP: $PUBLIC_IP"
-#          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-#
-#      - name: Verify Public IP is Set
-#        run: |
-#          echo "Using EC2 Public IP: $PUBLIC_IP"
+      - name: Launch Temporary EC2 Instance for Testing
+        run: |
+          echo "Launching temporary EC2 instance..."
+
+          INSTANCE_DETAILS=$(aws ec2 run-instances \
+            --image-id ami-05b10e08d247fb927 \
+            --instance-type t2.medium \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
+            --key-name j_ \
+            --security-group-ids sg-050ccad9abad062ad \
+            --query 'Instances[0].[InstanceId,PublicIpAddress]' \
+            --output text)
+
+          INSTANCE_ID=$(echo "$INSTANCE_DETAILS" | awk '{print $1}')
+          PUBLIC_IP=$(echo "$INSTANCE_DETAILS" | awk '{print $2}')
+
+          echo "Instance ID: $INSTANCE_ID"
+          echo "Public IP: $PUBLIC_IP"
+
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+          echo "Waiting for EC2 to be in 'running' state..."
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+
+          echo "EC2 Instance is now running."
+
+
+
+      - name: Get EC2 Public IP
+        run: |
+          echo "Fetching EC2 Public IP..."
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+
+          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
+            echo "Error: Could not fetch EC2 Public IP. Exiting."
+            exit 1
+          fi
+
+          echo "EC2 Public IP: $PUBLIC_IP"
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Verify Public IP is Set
+        run: |
+          echo "Using EC2 Public IP: $PUBLIC_IP"
 
 
       - name: Setup SSH Key
@@ -87,60 +87,60 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key_1.pem
           chmod 600 private_key_1.pem
 
-#      - name: Wait for EC2 SSH to be available
-#        run: |
-#          echo "Waiting for SSH to be available on EC2..."
-#          for i in {1..10}; do
-#            nc -z -v -w5 $PUBLIC_IP 22 && break
-#            echo "Retrying in 10 seconds..."
-#            sleep 10
-#          done
-#          echo "EC2 SSH is now available!"
-#
-#      - name: SSH into EC2 and Deploy
-#        run: |
-#          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$PUBLIC_IP << 'EOF'
-#            echo "Updating packages and installing dependencies..."
-#            sudo yum update -q -y
-#            sudo yum install -q -y git docker
-#
-#            echo "Starting Docker service..."
-#            sudo systemctl start docker
-#            sudo systemctl enable docker
-#            sudo usermod -aG docker ec2-user
-#            newgrp docker
-#
-#            echo "Installing Docker Compose..."
-#            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-#            sudo chmod +x /usr/local/bin/docker-compose
-#            docker-compose --version
-#
-#            echo "Cloning or updating repository..."
-#            if [ -d "jobDashboard" ]; then
-#              cd jobDashboard && git pull
-#            else
-#              git clone https://github.com/sureshselvadurai/jobDashboard.git && cd jobDashboard
-#            fi
-#
-#            echo "Starting application with Docker Compose..."
-#            docker-compose down
-#            docker-compose pull
-#            docker-compose up -d --build
-#          EOF
-#
-#
-#      - name: Wait for Backend Server to be Ready
-#        run: |
-#          echo "Waiting for backend service to be available..."
-#          for i in {1..10}; do
-#            curl -f http://$PUBLIC_IP:8000/jobs && break
-#            echo "Backend is not up yet. Retrying in 10 seconds..."
-#            sleep 10
-#          done || { echo "Backend failed to start in time"; exit 1; }
-#
-#      - name: Terminate Temporary EC2 Instance
-#        run: |
-#          aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+      - name: Wait for EC2 SSH to be available
+        run: |
+          echo "Waiting for SSH to be available on EC2..."
+          for i in {1..10}; do
+            nc -z -v -w5 $PUBLIC_IP 22 && break
+            echo "Retrying in 10 seconds..."
+            sleep 10
+          done
+          echo "EC2 SSH is now available!"
+
+      - name: SSH into EC2 and Deploy
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$PUBLIC_IP << 'EOF'
+            echo "Updating packages and installing dependencies..."
+            sudo yum update -q -y
+            sudo yum install -q -y git docker
+
+            echo "Starting Docker service..."
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -aG docker ec2-user
+            newgrp docker
+
+            echo "Installing Docker Compose..."
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+            docker-compose --version
+
+            echo "Cloning or updating repository..."
+            if [ -d "jobDashboard" ]; then
+              cd jobDashboard && git pull
+            else
+              git clone https://github.com/sureshselvadurai/jobDashboard.git && cd jobDashboard
+            fi
+
+            echo "Starting application with Docker Compose..."
+            docker-compose down
+            docker-compose pull
+            docker-compose up -d --build
+          EOF
+
+
+      - name: Wait for Backend Server to be Ready
+        run: |
+          echo "Waiting for backend service to be available..."
+          for i in {1..10}; do
+            curl -f http://$PUBLIC_IP:8000/jobs && break
+            echo "Backend is not up yet. Retrying in 10 seconds..."
+            sleep 10
+          done || { echo "Backend failed to start in time"; exit 1; }
+
+      - name: Terminate Temporary EC2 Instance
+        run: |
+          aws ec2 terminate-instances --instance-ids $INSTANCE_ID
 
       - name: Authenticate to AWS ECR
         run: |
@@ -244,7 +244,7 @@ jobs:
             exit 1
           fi
       
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << EOF
+          ssh -o StrictHostKeyChecking=no -i private_key1.pem ec2-user@$EC2_HOST << EOF
             echo "✅ Connected successfully!"
           
             echo "🗑️ Removing existing deployment directory (if exists)..."
