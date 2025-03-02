@@ -148,7 +148,12 @@ jobs:
 
       - name: Deploy Backend to QA EC2
         run: |
+          echo "Connecting to EC2 instance..."
+          echo "EC2 User: ${{ secrets.EC2_USER }}"
+          echo "EC2 Host: ${{ secrets.EC2_HOST }}"
+          
           ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            echo "Connected successfully!"
             echo "Navigating to deployment directory..."
             cd /home/ec2-user/job_project  # Change this to your actual path
       
@@ -158,7 +163,7 @@ jobs:
             echo "Stopping and removing old containers..."
             docker compose down
       
-            echo "Starting new containers...."
+            echo "Starting new containers..."
             docker compose up -d --build
       
             echo "Deployment successful!"
