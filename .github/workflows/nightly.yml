@@ -236,42 +236,54 @@ jobs:
           echo "EC2 User: $EC2_USER"
           echo "EC2 Host: $EC2_HOST"
       
-          BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
-          FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
-          
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << 'EOF'
+          # Debugging: Print image URIs before SSH
+          echo "🔍 Resolving Image URIs..."
+
+          if [[ -z "$BACKEND_IMAGE_URI" || -z "$FRONTEND_IMAGE_URI" ]]; then
+            echo "❌ Image URIs are not set. Check GitHub secrets."
+            exit 1
+          fi
+      
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << EOF
             echo "✅ Connected successfully!"
             echo "📂 Navigating to deployment directory..."
             cd /home/ec2-user/job_dashboard_deploy
-
+      
             echo "📥 Logging into AWS ECR..."
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
             
             echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
             echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
-
-
+          
+            BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
+            FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
+      
+            echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
+            echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
+      
             echo "📥 Pulling the latest images..."
-            if [[ -z "$BACKEND_IMAGE_URI" || -z "$FRONTEND_IMAGE_URI" ]]; then
-              echo "❌ Image URIs are not set. Check your CI/CD configuration."
-              exit 1
-            fi
-            
             docker pull "$BACKEND_IMAGE_URI"
             docker pull "$FRONTEND_IMAGE_URI"
-
+      
             echo "🛑 Stopping and removing old containers..."
-            docker compose down
-
+            docker compose down || docker-compose down
+      
             echo "🚀 Updating docker-compose.yml with latest images..."
             sed -i "s|image: .*job_backend.*|image: $BACKEND_IMAGE_URI|" docker-compose.yml
             sed -i "s|image: .*job_frontend.*|image: $FRONTEND_IMAGE_URI|" docker-compose.yml
-
+      
             echo "🚀 Starting new containers..."
-            docker compose up -d --build
-
+            docker compose up -d --build || docker-compose up -d --build
+      
             echo "🎉 Deployment successful!"
           EOF
+        env:
+          EC2_USER: "${{ secrets.EC2_USER }}"
+          EC2_HOST: "${{ secrets.EC2_HOST }}"
+          BACKEND_IMAGE_URI: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
+          FRONTEND_IMAGE_URI: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
+
+
 
       - name: Verify Deployment
         run: |
