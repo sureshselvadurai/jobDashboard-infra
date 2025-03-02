@@ -173,6 +173,9 @@ jobs:
           echo "🚀 Building all services using Docker Compose..."
           docker compose build --progress=plain  # Show detailed build logs
 
+          echo "🐳 Available Docker images:"
+          docker images
+          
           echo "🔍 Verifying backend image build..."
           BACKEND_IMAGE_ID=$(docker images -q jobdashboard-backend)
           if [ -z "$BACKEND_IMAGE_ID" ]; then
