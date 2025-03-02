@@ -74,7 +74,7 @@ jobs:
 
       - name: SSH into EC2 and Deploy
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$PUBLIC_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP << 'EOF'
             echo "Cloning repository..."
             git clone https://github.com/sureshselvadurai/jobDashboard.git || (cd jobDashboard && git pull)
             cd jobDashboard
