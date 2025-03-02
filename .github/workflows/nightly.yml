@@ -31,7 +31,7 @@ jobs:
           
           INSTANCE_DETAILS=$(aws ec2 run-instances \
             --image-id ami-05b10e08d247fb927 \
-            --instance-type t3.micro \
+            --instance-type t2.medium \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
             --key-name j_ \
             --security-group-ids sg-050ccad9abad062ad \
