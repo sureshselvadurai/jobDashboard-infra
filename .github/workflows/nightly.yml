@@ -40,29 +40,51 @@ jobs:
           aws ec2 wait instance-running --instance-ids $INSTANCE_ID
           echo "EC2 instance is now running."
 
-
       - name: Get EC2 Public IP
         run: |
+          echo "Fetching EC2 Public IP..."
           PUBLIC_IP=$(aws ec2 describe-instances \
             --instance-ids $INSTANCE_ID \
             --query 'Reservations[0].Instances[0].PublicIpAddress' \
             --output text)
+          
+          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
+            echo "Error: Could not fetch EC2 Public IP. Exiting."
+            exit 1
+          fi
+          
+          echo "EC2 Public IP: $PUBLIC_IP"
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
-      - name: Set Up SSH Access to EC2
+      - name: Verify Public IP is Set
+        run: |
+          echo "Using EC2 Public IP: $PUBLIC_IP"
+
+      - name: Setup SSH Key
         run: |
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
 
-      - name: Clone Code Repository & Run App on EC2
+      - name: Wait for EC2 SSH to be available
         run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@$PUBLIC_IP << 'EOF'
+          echo "Waiting for SSH to be available on EC2..."
+          for i in {1..10}; do
+            nc -z -v -w5 $PUBLIC_IP 22 && break
+            echo "Retrying in 10 seconds..."
+            sleep 10
+          done
+          echo "EC2 SSH is now available!"
+
+      - name: SSH into EC2 and Deploy
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@$PUBLIC_IP << 'EOF'
             echo "Cloning repository..."
-            git clone https://github.com/sureshselvadurai/jobDashboard.git
+            git clone https://github.com/sureshselvadurai/jobDashboard.git || (cd jobDashboard && git pull)
             cd jobDashboard
             echo "Starting application..."
             docker-compose up -d
           EOF
+
 
       - name: Wait for Backend Server to be Ready
         run: |
