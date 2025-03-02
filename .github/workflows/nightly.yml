@@ -27,18 +27,17 @@ jobs:
 
       - name: Launch Temporary EC2 Instance for Testing
         run: |
+          echo "Launching temporary EC2 instance..."
           INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-05b10e08d247fb927 \
+            --image-id ami-05b10e08d247fb927 \  # Change based on AWS region
             --instance-type t3.micro \
-            --query 'Instances[0].InstanceId' \
-            --output text)
+            --key-name j_ \  # Use the same key pair as QA
+            --security-groups my-security-group \
+            --query 'Instances[0].InstanceId' --output text)
 
+          echo "Instance ID: $INSTANCE_ID"
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-          echo "EC2 instance launched: $INSTANCE_ID"
-          
-          # Wait for EC2 to be running
-          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-          echo "EC2 instance is now running."
+
 
       - name: Get EC2 Public IP
         run: |
