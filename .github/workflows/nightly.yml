@@ -246,37 +246,33 @@ jobs:
       
           ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << EOF
             echo "✅ Connected successfully!"
-            echo "📂 Navigating to deployment directory..."
-
+          
             echo "🗑️ Removing existing deployment directory (if exists)..."
             rm -rf /home/ec2-user/job_dashboard_deploy
-          
+            
             echo "📂 Creating a fresh deployment directory..."
             mkdir -p /home/ec2-user/job_dashboard_deploy
             cd /home/ec2-user/job_dashboard_deploy
-
-      
+          
             echo "📥 Logging into AWS ECR..."
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            
-            echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
-            echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
           
-            BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}"
-            FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}"
-      
-            echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
-            echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
-      
+            echo "🗑️ Stopping and removing old containers..."
+            docker stop jobdashboard-backend jobdashboard-frontend || true
+            docker rm jobdashboard-backend jobdashboard-frontend || true
+          
+            echo "🗑️ Removing old images..."
+            docker rmi -f \$(docker images -q) || true
+          
             echo "📥 Pulling the latest images..."
             docker pull "$BACKEND_IMAGE_URI"
             docker pull "$FRONTEND_IMAGE_URI"
           
             echo "🚀 Running backend container..."
-            docker run -d --name "$BACKEND_IMAGE_URI" -p 8000:8000 "$BACKEND_IMAGE_URI"
+            docker run -d --name jobdashboard-backend -p 8000:8000 "$BACKEND_IMAGE_URI"
           
             echo "🚀 Running frontend container..."
-            docker run -d --name "$FRONTEND_IMAGE_URI" -p 5500:5500 "$FRONTEND_IMAGE_URI"
+            docker run -d --name jobdashboard-frontend -p 5500:5500 "$FRONTEND_IMAGE_URI"
           
             echo "🎉 Deployment successful!"
           EOF
