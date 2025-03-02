@@ -33,8 +33,8 @@ jobs:
             --image-id ami-05b10e08d247fb927 \
             --instance-type t3.micro \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
-            --security-groups "launch-wizard-1" \
-            --associate-public-ip-address \
+            --security-group-ids sg-050ccad9abad062ad \
+            --subnet-id subnet-07c449c20d55c8dc3 \
             --query 'Instances[0].[InstanceId,PublicIpAddress]' \
             --output text)
 
@@ -51,6 +51,7 @@ jobs:
           aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
           echo "EC2 Instance is now running."
+
 
 
       - name: Get EC2 Public IP
