@@ -31,8 +31,7 @@ jobs:
           INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ami-05b10e08d247fb927 \  # Change based on AWS region
             --instance-type t3.micro \
-            --key-name j_ \  # Use the same key pair as QA
-            --security-groups my-security-group \
+            --key-name j_ \
             --query 'Instances[0].InstanceId' --output text)
 
           echo "Instance ID: $INSTANCE_ID"
