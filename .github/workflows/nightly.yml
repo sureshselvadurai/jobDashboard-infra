@@ -33,6 +33,7 @@ jobs:
             --image-id ami-05b10e08d247fb927 \
             --instance-type t3.micro \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
+            --key-name j_
             --security-group-ids sg-050ccad9abad062ad \
             --subnet-id subnet-07c449c20d55c8dc3 \
             --query 'Instances[0].[InstanceId,PublicIpAddress]' \
@@ -91,7 +92,7 @@ jobs:
 
       - name: SSH into EC2 and Deploy
         run: |
-          ssh -o StrictHostKeyChecking=no ec2_user@$PUBLIC_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no private_key.pem  ec2_user@$PUBLIC_IP << 'EOF'
             echo "Cloning repository..."
             git clone https://github.com/sureshselvadurai/jobDashboard.git || (cd jobDashboard && git pull)
             cd jobDashboard
