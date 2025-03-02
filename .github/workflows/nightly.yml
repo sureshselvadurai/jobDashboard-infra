@@ -29,15 +29,14 @@ jobs:
         run: |
           echo "Launching temporary EC2 instance..."
           
-          # Launch EC2 without SSH key, using a public IP and a security group
           INSTANCE_DETAILS=$(aws ec2 run-instances \
-            --image-id ami-05b10e08d247fb927 \  # Change to your region's AMI
+            --image-id ami-05b10e08d247fb927 \
             --instance-type t3.micro \
-            --iam-instance-profile Name="SSM-Role" \  # Ensure EC2 can be accessed via SSM
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=j_,Value=Temp-EC2-Test}]' \
-            --security-groups "open-access" \  # Replace with a group allowing HTTP (8000) access
+            --iam-instance-profile Name="SSM-Role" \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
+            --security-groups "open-access" \
             --associate-public-ip-address \
-            --query 'Instances[0].[InstanceId, PublicIpAddress]' \
+            --query 'Instances[0].[InstanceId,PublicIpAddress]' \
             --output text)
 
           INSTANCE_ID=$(echo "$INSTANCE_DETAILS" | awk '{print $1}')
@@ -46,16 +45,13 @@ jobs:
           echo "Instance ID: $INSTANCE_ID"
           echo "Public IP: $PUBLIC_IP"
 
-          # Save values for later steps
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
-          # Wait until EC2 is running
           echo "Waiting for EC2 to be in 'running' state..."
           aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-          
-          echo "EC2 Instance is now running."
 
+          echo "EC2 Instance is now running."
 
 
       - name: Get EC2 Public IP
