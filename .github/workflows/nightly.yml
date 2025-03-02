@@ -148,42 +148,53 @@ jobs:
 
       - name: Build and Push Docker Images to ECR
         run: |
+          set -e  # Exit on error for better debugging
+
           BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
           FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
 
-          # Clone the repository
+          echo "🔍 Cloning the repository..."
           git clone --depth 1 https://github.com/sureshselvadurai/jobDashboard.git
           
-          # Navigate to the project directory
           cd jobDashboard
 
-          # Build all services using docker-compose (backend, frontend)
-          docker compose build
+          echo "🔍 Checking backend directory..."
+          if [ ! -d "backend" ]; then
+            echo "❌ Backend directory not found!"
+            exit 1
+          fi
 
-          # Extract backend image ID
+          echo "🔍 Checking backend Dockerfile..."
+          if [ ! -f "backend/Dockerfile" ]; then
+            echo "❌ Backend Dockerfile not found!"
+            exit 1
+          fi
+
+          echo "🚀 Building all services using Docker Compose..."
+          docker compose build --progress=plain  # Show detailed build logs
+
+          echo "🔍 Verifying backend image build..."
           BACKEND_IMAGE_ID=$(docker images -q job_backend)
           if [ -z "$BACKEND_IMAGE_ID" ]; then
-            echo "❌ Backend image was not built correctly!"
+            echo "❌ Backend image failed to build!"
             exit 1
           fi
+          echo "✅ Backend image built successfully: $BACKEND_IMAGE_ID"
 
-          echo "✅ Backend image built: $BACKEND_IMAGE_ID"
-
-          # Extract frontend image ID
+          echo "🔍 Verifying frontend image build..."
           FRONTEND_IMAGE_ID=$(docker images -q job_frontend)
           if [ -z "$FRONTEND_IMAGE_ID" ]; then
-            echo "❌ Frontend image was not built correctly!"
+            echo "❌ Frontend image failed to build!"
             exit 1
           fi
+          echo "✅ Frontend image built successfully: $FRONTEND_IMAGE_ID"
 
-          echo "✅ Frontend image built: $FRONTEND_IMAGE_ID"
-
-          # Tag and push backend image
+          echo "🚀 Tagging and pushing backend image..."
           docker tag job_backend $BACKEND_IMAGE_URI
           docker push $BACKEND_IMAGE_URI
           echo "✅ Backend image pushed to ECR: $BACKEND_IMAGE_URI"
 
-          # Tag and push frontend image
+          echo "🚀 Tagging and pushing frontend image..."
           docker tag job_frontend $FRONTEND_IMAGE_URI
           docker push $FRONTEND_IMAGE_URI
           echo "✅ Frontend image pushed to ECR: $FRONTEND_IMAGE_URI"
