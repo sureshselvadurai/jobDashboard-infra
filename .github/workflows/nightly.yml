@@ -158,7 +158,7 @@ jobs:
             echo "Stopping and removing old containers..."
             docker compose down
       
-            echo "Starting new containers..."
+            echo "Starting new containers...."
             docker compose up -d --build
       
             echo "Deployment successful!"
