@@ -166,7 +166,7 @@ jobs:
           echo "✅ docker-compose.yml found. Proceeding with build."
 
           # Build all services using docker-compose (backend, frontend)
-          docker-compose build
+          docker compose build
 
           # Extract backend image ID
           BACKEND_IMAGE_ID=$(docker images -q job_backend)
