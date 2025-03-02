@@ -193,14 +193,15 @@ jobs:
           echo "✅ Frontend image built successfully: $FRONTEND_IMAGE_ID"
 
           echo "🚀 Tagging and pushing backend image..."
-          docker tag job_backend $BACKEND_IMAGE_URI
+          docker tag jobdashboard-backend $BACKEND_IMAGE_URI
           docker push $BACKEND_IMAGE_URI
           echo "✅ Backend image pushed to ECR: $BACKEND_IMAGE_URI"
-
+          
           echo "🚀 Tagging and pushing frontend image..."
-          docker tag job_frontend $FRONTEND_IMAGE_URI
+          docker tag jobdashboard-frontend $FRONTEND_IMAGE_URI
           docker push $FRONTEND_IMAGE_URI
           echo "✅ Frontend image pushed to ECR: $FRONTEND_IMAGE_URI"
+
 
       - name: Set Environment Variables
         run: |
