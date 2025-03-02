@@ -27,14 +27,35 @@ jobs:
 
       - name: Launch Temporary EC2 Instance for Testing
         run: |
-          INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-05b10e08d247fb927 \
+          echo "Launching temporary EC2 instance..."
+          
+          # Launch EC2 without SSH key, using a public IP and a security group
+          INSTANCE_DETAILS=$(aws ec2 run-instances \
+            --image-id ami-05b10e08d247fb927 \  # Change to your region's AMI
             --instance-type t3.micro \
-            --query 'Instances[0].InstanceId' \
+            --iam-instance-profile Name="SSM-Role" \  # Ensure EC2 can be accessed via SSM
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=j_,Value=Temp-EC2-Test}]' \
+            --security-groups "open-access" \  # Replace with a group allowing HTTP (8000) access
+            --associate-public-ip-address \
+            --query 'Instances[0].[InstanceId, PublicIpAddress]' \
             --output text)
 
+          INSTANCE_ID=$(echo "$INSTANCE_DETAILS" | awk '{print $1}')
+          PUBLIC_IP=$(echo "$INSTANCE_DETAILS" | awk '{print $2}')
+
           echo "Instance ID: $INSTANCE_ID"
+          echo "Public IP: $PUBLIC_IP"
+
+          # Save values for later steps
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+          # Wait until EC2 is running
+          echo "Waiting for EC2 to be in 'running' state..."
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          
+          echo "EC2 Instance is now running."
+
 
 
       - name: Get EC2 Public IP
@@ -55,7 +76,7 @@ jobs:
 
       - name: Verify Public IP is Set
         run: |
-          echo "Using EC2 Public IP: $PUBLIC_IP"
+          echo "Using EC2 Public IP: @$PUBLIC_IP"
 
       - name: Setup SSH Key
         run: |
@@ -74,7 +95,7 @@ jobs:
 
       - name: SSH into EC2 and Deploy
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@$PUBLIC_IP << 'EOF'
+          ssh -o StrictHostKeyChecking=no ec2_user@$PUBLIC_IP << 'EOF'
             echo "Cloning repository..."
             git clone https://github.com/sureshselvadurai/jobDashboard.git || (cd jobDashboard && git pull)
             cd jobDashboard
