@@ -52,6 +52,29 @@ jobs:
 
           echo "EC2 Instance is now running."
 
+
+
+      - name: Get EC2 Public IP
+        run: |
+          echo "Fetching EC2 Public IP..."
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          
+          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
+            echo "Error: Could not fetch EC2 Public IP. Exiting."
+            exit 1
+          fi
+          
+          echo "EC2 Public IP: $PUBLIC_IP"
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Verify Public IP is Set
+        run: |
+          echo "Using EC2 Public IP: $PUBLIC_IP"
+
+
       - name: Setup SSH Key
         run: |
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
