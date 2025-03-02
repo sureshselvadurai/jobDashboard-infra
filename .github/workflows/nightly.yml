@@ -155,15 +155,7 @@ jobs:
           git clone --depth 1 https://github.com/sureshselvadurai/jobDashboard.git
           
           # Navigate to the project directory
-          cd jobDashboard/backend
-
-          # Ensure docker-compose.yml exists
-          if [ ! -f "docker-compose.yml" ]; then
-            echo "❌ docker-compose.yml not found in project root!"
-            exit 1
-          fi
-
-          echo "✅ docker-compose.yml found. Proceeding with build."
+          cd jobDashboard
 
           # Build all services using docker-compose (backend, frontend)
           docker compose build
