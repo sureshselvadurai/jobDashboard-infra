@@ -231,13 +231,14 @@ jobs:
           chmod 600 private_key1.pem
 
       - name: Deploy Backend and Frontend to QA EC2
+        env:
+          BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
+          FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
+
         run: |
           echo "Using the following connection details:"
           echo "EC2 User: $EC2_USER"
           echo "EC2 Host: $EC2_HOST"
-
-          BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
-          FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
 
           ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << 'EOF'
             echo "✅ Connected successfully!"
