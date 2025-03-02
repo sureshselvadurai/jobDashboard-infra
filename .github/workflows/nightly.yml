@@ -140,25 +140,56 @@ jobs:
       - name: Authenticate to AWS ECR
         run: |
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-      - name: Build and Push Docker Image to ECR
+
+      - name: Build and Push Docker Images to ECR
         run: |
-          IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest"
+          BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
+          FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
 
           # Clone the repository
           git clone --depth 1 https://github.com/sureshselvadurai/jobDashboard.git
           
-          # Navigate to the backend directory
+          # Navigate to the project directory
           cd jobDashboard
 
-          # Build the backend Docker image
-          docker build -t job_ecr .
+          # Ensure docker-compose.yml exists
+          if [ ! -f "docker-compose.yml" ]; then
+            echo "❌ docker-compose.yml not found in project root!"
+            exit 1
+          fi
 
-          # Tag the image for ECR
-          docker tag job_ecr $IMAGE_URI
+          echo "✅ docker-compose.yml found. Proceeding with build."
 
-          # Push the image to AWS ECR
-          docker push $IMAGE_URI
+          # Build all services using docker-compose (backend, frontend)
+          docker-compose build
 
+          # Extract backend image ID
+          BACKEND_IMAGE_ID=$(docker images -q job_backend)
+          if [ -z "$BACKEND_IMAGE_ID" ]; then
+            echo "❌ Backend image was not built correctly!"
+            exit 1
+          fi
+
+          echo "✅ Backend image built: $BACKEND_IMAGE_ID"
+
+          # Extract frontend image ID
+          FRONTEND_IMAGE_ID=$(docker images -q job_frontend)
+          if [ -z "$FRONTEND_IMAGE_ID" ]; then
+            echo "❌ Frontend image was not built correctly!"
+            exit 1
+          fi
+
+          echo "✅ Frontend image built: $FRONTEND_IMAGE_ID"
+
+          # Tag and push backend image
+          docker tag job_backend $BACKEND_IMAGE_URI
+          docker push $BACKEND_IMAGE_URI
+          echo "✅ Backend image pushed to ECR: $BACKEND_IMAGE_URI"
+
+          # Tag and push frontend image
+          docker tag job_frontend $FRONTEND_IMAGE_URI
+          docker push $FRONTEND_IMAGE_URI
+          echo "✅ Frontend image pushed to ECR: $FRONTEND_IMAGE_URI"
 
       - name: Set Environment Variables
         run: |
@@ -182,32 +213,58 @@ jobs:
           echo "EC2_USER=${{ secrets.EC2_USER }}" >> $GITHUB_ENV
           echo "EC2_HOST=$EC2_HOST" >> $GITHUB_ENV
 
+      - name: Setup SSH Key
+        run: |
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key1.pem
+          chmod 600 private_key1.pem
 
-      - name: Deploy Backend to QA EC2
+      - name: Deploy Backend and Frontend to QA EC2
         run: |
           echo "Using the following connection details:"
           echo "EC2 User: $EC2_USER"
           echo "EC2 Host: $EC2_HOST"
-          
-          ssh -o StrictHostKeyChecking=no -i private_key_1.pem ec2-user@$EC2_HOST << 'EOF'
-            echo "Connected successfully!"
-            echo "Navigating to deployment directory..."
-            cd /home/ec2-user/job_ecr  # Change this to your actual path
-          
+
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST << 'EOF'
+            echo "✅ Connected successfully!"
+            echo "📂 Navigating to deployment directory..."
+            cd /home/ec2-user/job_dashboard
+
             echo "📥 Logging into AWS ECR..."
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-            echo "📥 Pulling the latest image..."
-            docker pull $IMAGE_URI
+            echo "📥 Pulling the latest images..."
+            docker pull $BACKEND_IMAGE_URI
+            docker pull $FRONTEND_IMAGE_URI
 
             echo "🛑 Stopping and removing old containers..."
             docker compose down
 
-            echo "🚀 Updating docker-compose.yml with latest image..."
-            sed -i "s|image: .*|image: $IMAGE_URI|" docker-compose.yml
+            echo "🚀 Updating docker-compose.yml with latest images..."
+            sed -i "s|image: .*job_backend.*|image: $BACKEND_IMAGE_URI|" docker-compose.yml
+            sed -i "s|image: .*job_frontend.*|image: $FRONTEND_IMAGE_URI|" docker-compose.yml
 
             echo "🚀 Starting new containers..."
             docker compose up -d --build
 
             echo "🎉 Deployment successful!"
           EOF
+
+      - name: Verify Deployment
+        run: |
+          echo "🔍 Verifying Backend API is responding..."
+          for i in {1..10}; do
+            curl -f http://$EC2_HOST:8000/jobs && break
+            echo "Backend is not up yet. Retrying in 10 seconds..."
+            sleep 10
+          done || { echo "❌ Backend failed to start in time"; exit 1; }
+
+          echo "✅ Backend is up!"
+
+          echo "🔍 Verifying Frontend is accessible..."
+          for i in {1..10}; do
+            curl -f http://$EC2_HOST:5500 && break
+            echo "Frontend is not up yet. Retrying in 10 seconds..."
+            sleep 10
+          done || { echo "❌ Frontend failed to start in time"; exit 1; }
+
+          echo "✅ Frontend is up!"
