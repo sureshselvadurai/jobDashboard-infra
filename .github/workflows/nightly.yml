@@ -1,0 +1,123 @@
+name: Nightly Deployment
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Launch Temporary EC2 Instance for Testing
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id ami-0c55b159cbfafe1f0 \  # Update this with your region’s AMI ID
+            --instance-type t3.micro \
+            --key-name MyKeyPair \  # Ensure you have this key
+            --security-groups my-security-group \
+            --query 'Instances[0].InstanceId' --output text)
+
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+
+          # Wait for EC2 to be ready
+          aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
+
+      - name: Get EC2 Public IP
+        run: |
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids $INSTANCE_ID \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          echo "EC2 Public IP: $PUBLIC_IP"
+          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+
+      - name: Set Up SSH Access to EC2
+        run: |
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+
+      - name: Set Environment Variables on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@$PUBLIC_IP << 'EOF'
+            echo "Setting up environment variables..."
+
+            echo "export DB_USER=${{ secrets.DB_USER }}" | sudo tee -a /etc/environment
+            echo "export DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | sudo tee -a /etc/environment
+            echo "export DB_HOST=${{ secrets.DB_HOST }}" | sudo tee -a /etc/environment
+            echo "export DB_PORT=${{ secrets.DB_PORT }}" | sudo tee -a /etc/environment
+            echo "export DB_NAME=${{ secrets.DB_NAME }}" | sudo tee -a /etc/environment
+            source /etc/environment
+          EOF
+
+      - name: Start Backend Container on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@$PUBLIC_IP << 'EOF'
+            echo "Starting Backend Container..."
+            
+            docker run -d --name job_backend \
+              -p 8000:8000 \
+              -e DB_USER=$DB_USER \
+              -e DB_PASSWORD=$DB_PASSWORD \
+              -e DB_HOST=$DB_HOST \
+              -e DB_PORT=$DB_PORT \
+              -e DB_NAME=$DB_NAME \
+              my-backend-image:latest
+          EOF
+
+      - name: Run Smoke Tests BE
+        run: |
+          curl -f http://$PUBLIC_IP:8000/health || exit 1
+
+      - name: Run Smoke Tests FE
+        run: |
+          curl -f http://$PUBLIC_IP:5500/health || exit 1
+
+      - name: Terminate Temporary EC2 Instance
+        run: |
+          aws ec2 terminate-instances --instance-ids $INSTANCE_ID
+
+      - name: Authenticate to AWS ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+      - name: Build and Push Docker Image to ECR
+        run: |
+          IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest"
+          docker build -t job_backend .
+          docker tag job_backend $IMAGE_URI
+          docker push $IMAGE_URI
+
+      - name: Deploy Backend to QA EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            echo "Pulling latest backend image..."
+            
+            docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
+            echo "Stopping old backend container..."
+            docker stop job_backend || true
+            docker rm job_backend || true
+
+            echo "Starting new backend container..."
+            docker run -d --name job_backend \
+              -p 8000:8000 \
+              -e DB_USER=${{ secrets.DB_USER }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e DB_HOST=${{ secrets.DB_HOST }} \
+              -e DB_PORT=${{ secrets.DB_PORT }} \
+              -e DB_NAME=${{ secrets.DB_NAME }} \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          EOF
