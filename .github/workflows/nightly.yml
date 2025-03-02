@@ -174,7 +174,7 @@ jobs:
           docker compose build --progress=plain  # Show detailed build logs
 
           echo "🔍 Verifying backend image build..."
-          BACKEND_IMAGE_ID=$(docker images -q job_backend)
+          BACKEND_IMAGE_ID=$(docker images -q jobdashboard-backend)
           if [ -z "$BACKEND_IMAGE_ID" ]; then
             echo "❌ Backend image failed to build!"
             exit 1
@@ -182,7 +182,7 @@ jobs:
           echo "✅ Backend image built successfully: $BACKEND_IMAGE_ID"
 
           echo "🔍 Verifying frontend image build..."
-          FRONTEND_IMAGE_ID=$(docker images -q job_frontend)
+          FRONTEND_IMAGE_ID=$(docker images -q jobdashboard-frontend)
           if [ -z "$FRONTEND_IMAGE_ID" ]; then
             echo "❌ Frontend image failed to build!"
             exit 1
