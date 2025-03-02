@@ -239,7 +239,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$EC2_HOST << 'EOF'
             echo "✅ Connected successfully!"
             echo "📂 Navigating to deployment directory..."
-            cd /home/ec2-user/job_dashboard
+            cd /home/ec2-user/job_dashboard_deploy
 
             echo "📥 Logging into AWS ECR..."
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
