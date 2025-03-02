@@ -146,25 +146,30 @@ jobs:
           docker tag job_backend $IMAGE_URI
           docker push $IMAGE_URI
 
+      - name: Set Environment Variables
+        run: |
+          echo "EC2_USER=${{ secrets.EC2_USER }}" >> $GITHUB_ENV
+          echo "EC2_HOST=${{ secrets.EC2_HOST }}" >> $GITHUB_ENV
+
       - name: Deploy Backend to QA EC2
         run: |
-          echo "Connecting to EC2 instance..."
-          echo "EC2 User: ${{ secrets.EC2_USER }}"
-          echo "EC2 Host: ${{ secrets.EC2_HOST }}"
+          echo "Using the following connection details:"
+          echo "EC2 User: $EC2_USER"
+          echo "EC2 Host: $EC2_HOST"
           
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no -i private_key.pem $EC2_USER@$EC2_HOST << 'EOF'
             echo "Connected successfully!"
             echo "Navigating to deployment directory..."
             cd /home/ec2-user/job_project  # Change this to your actual path
-      
+          
             echo "Pulling latest images..."
             docker compose pull
-      
+          
             echo "Stopping and removing old containers..."
             docker compose down
-      
+          
             echo "Starting new containers..."
             docker compose up -d --build
-      
+          
             echo "Deployment successful!"
           EOF
