@@ -30,7 +30,6 @@ jobs:
           echo "Launching temporary EC2 instance..."
           INSTANCE_ID=$(aws ec2 run-instances \
             --image-id ami-05b10e08d247fb927 \ 
-            --instance-type t3.micro \
             --key-name j_ \
             --query 'Instances[0].InstanceId' --output text)
 
