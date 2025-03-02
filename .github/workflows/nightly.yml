@@ -35,7 +35,6 @@ jobs:
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
             --key-name j_ \
             --security-group-ids sg-050ccad9abad062ad \
-            --subnet-id subnet-07c449c20d55c8dc3 \
             --query 'Instances[0].[InstanceId,PublicIpAddress]' \
             --output text)
 
