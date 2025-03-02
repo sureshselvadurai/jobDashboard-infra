@@ -262,8 +262,8 @@ jobs:
             echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
             echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
           
-            BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
-            FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
+            BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}"
+            FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}"
       
             echo "🔍 Backend Image URI: $BACKEND_IMAGE_URI"
             echo "🔍 Frontend Image URI: $FRONTEND_IMAGE_URI"
