@@ -287,7 +287,7 @@ jobs:
 
           echo "🔍 Verifying Backend is accessible..."
           for i in {1..10}; do
-            curl -f https://$EC2_HOST:8000/jobs && break
+            curl -f http://$EC2_HOST:8000/jobs && break
             echo "Backend is not up yet. Retrying in 10 seconds...."
             sleep 10
           done || { echo "❌ Backend failed to start in time"; exit 1; }
