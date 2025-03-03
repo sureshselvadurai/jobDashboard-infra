@@ -2,7 +2,7 @@ name: Nightly Deployment
 
 on:
   schedule:
-    - cron: "0 3 * * *"  # Runs nightly at 3 AM UTC
+    - cron: "0 3 * * *"
   workflow_dispatch:
   push:
     branches:
