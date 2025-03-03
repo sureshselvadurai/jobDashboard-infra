@@ -52,7 +52,7 @@ jobs:
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
           echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
 
-          echo "Waiting for EC2 to be in 'running' state..."
+          echo "Waiting for EC2 to be in 'running' state...."
           aws ec2 wait instance-running --instance-ids $INSTANCE_ID
 
           echo "EC2 Instance is now running."
