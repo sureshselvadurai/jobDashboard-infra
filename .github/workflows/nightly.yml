@@ -61,7 +61,7 @@ jobs:
 
       - name: 🔍  Call refresh-and-notify API inside backend container
         run: |
-          docker exec job_backend curl http://localhost:8000/jobs/refresh/ -o /tmp/result.json
+          docker exec job_backend curl http://localhost:8000/notify/refresh-and-notify -o /tmp/result.json
           docker exec job_backend cat /tmp/result.json
 
   push-images:
