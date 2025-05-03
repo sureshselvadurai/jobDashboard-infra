@@ -61,7 +61,7 @@ jobs:
 
       - name: 🔍 Call refresh-and-notify API inside backend container
         run: |
-          code=$(docker exec job_backend curl -s -w "%{http_code}" http://localhost:8000/notify/refresh-and-notify -o /tmp/result.json)
+          code=$(docker exec job_backend curl -s -w "%{http_code}" http://127.0.0.1:8000/notify/refresh-and-notify -o /tmp/result.json)
           docker exec job_backend cat /tmp/result.json > result.json
           if [ "$code" -ne 200 ]; then
             echo "❌ Health check failed with status $code"
