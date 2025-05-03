@@ -61,7 +61,7 @@ jobs:
 
       - name: 🔍 Call refresh-and-notify API
         run: |
-          response=$(curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify/)
+          response=$(curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify)
           if [ "$response" -ne 200 ]; then
             echo "❌ Health check failed with status $response"
             cat result.json
