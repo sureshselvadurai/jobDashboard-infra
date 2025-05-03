@@ -100,7 +100,7 @@ jobs:
           aws ecr get-login-password --region $REGION | \
           docker login --username AWS --password-stdin $ECR_REGISTRY
 
-      - name: 🚀 Build & Push Backend Image
+      - name: 🚀  Build & Push Backend Image
         run: |
           docker build \
             --build-arg DB_USER=$DB_USER \
