@@ -1,14 +1,9 @@
 name: Nightly Test and ECR Push
 
 on:
-  # 🔁 Scheduled run (monthly)
   schedule:
     - cron: '0 8 10 * *'
-
-  # 🧑‍💻 Manual trigger via UI
   workflow_dispatch:
-
-  # 🔃 Push-based trigger (only runs if commit message includes [push-ecr] or [force-push])
   push:
     branches:
       - main
@@ -16,30 +11,20 @@ on:
       - '**.md'
 
 env:
-  # 📦 GitHub Repo
   REPO: https://github.com/sureshselvadurai/jobDashboard.git
-
-  # 🌍 AWS Region
   REGION: us-east-1
-
-  # 🔐 ECR Registry & Image Paths
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-backend
   FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-frontend
   NOTIFIER_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-notifier
-
-  # 🛠️ Environment variables for backend container
   DB_USER: ${{ secrets.DB_USER }}
   DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
   DB_HOST: ${{ secrets.DB_HOST }}
   DB_PORT: ${{ secrets.DB_PORT }}
   DB_NAME: ${{ secrets.DB_NAME }}
-
-  # 🔔 Notifier secret
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
-
   run-test:
     name: Run Compose & Health Check
     runs-on: ubuntu-latest
@@ -68,6 +53,11 @@ jobs:
           cd main-repo
           docker compose --env-file .env up -d
           sleep 30
+
+      - name: 🧪 Debug: List available FastAPI routes
+        run: |
+          echo "📡 Fetching FastAPI openapi.json..."
+          curl -s http://localhost:8000/openapi.json | jq '.paths' || curl -s http://localhost:8000/openapi.json
 
       - name: 🔍 Call refresh-and-notify API
         run: |
