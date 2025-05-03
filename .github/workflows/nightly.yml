@@ -1,26 +1,81 @@
-name: Nightly Deployment
+name: Nightly Test and ECR Push
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: '0 8 * * *'
   workflow_dispatch:
-  push:
-    branches:
-      - main
+
+env:
+  REPO: https://github.com/sureshselvadurai/jobDashboard.git
+  REGION: us-east-1
+
+  # ECR
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-backend
+  FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-frontend
+  NOTIFIER_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-notifier
+
+  # DB ENV (used by backend)
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  DB_HOST: ${{ secrets.DB_HOST }}
+  DB_PORT: ${{ secrets.DB_PORT }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+
+  # Notifier ENV
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
-  deploy:
+
+  run-test:
+    name: Run Compose & Health Check
     runs-on: ubuntu-latest
     environment: dev
-
     steps:
-      - name: Checkout Infra Repository
+      - name: Checkout Infra Repo
         uses: actions/checkout@v3
 
-      - name: Install Docker Compose
+      - name: Clone Main Repo
+        run: git clone $REPO main-repo
+
+      - name: Create .env for Docker Compose
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+          cat <<EOF > main-repo/.env
+          DB_USER=${{ env.DB_USER }}
+          DB_PASSWORD=${{ env.DB_PASSWORD }}
+          DB_HOST=${{ env.DB_HOST }}
+          DB_PORT=${{ env.DB_PORT }}
+          DB_NAME=${{ env.DB_NAME }}
+          SLACK_WEBHOOK_URL=${{ env.SLACK_WEBHOOK_URL }}
+          EOF
+
+      - name: Start Docker Compose
+        run: |
+          cd main-repo
+          docker compose --env-file .env up -d
+          sleep 30
+
+      - name: Call /jobs/refresh-and-notify API
+        run: |
+          response=$(curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify/)
+          if [ "$response" -ne 200 ]; then
+            echo "❌ Health check failed with status $response"
+            cat result.json
+            exit 1
+          fi
+          echo "✅ Refresh and notify successful"
+
+  push-images:
+    name: Build and Push Images to ECR
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: run-test
+    steps:
+      - name: Checkout Infra Repo
+        uses: actions/checkout@v3
+
+      - name: Clone Main Repo
+        run: git clone $REPO main-repo
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -28,277 +83,32 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
-      - name: Launch Temporary EC2 Instance for Testing
+      - name: Login to ECR
         run: |
-          echo "Launching temporary EC2 instance..."
+          aws ecr get-login-password --region $REGION | \
+            docker login --username AWS --password-stdin $ECR_REGISTRY
 
-          INSTANCE_DETAILS=$(aws ec2 run-instances \
-            --image-id ami-05b10e08d247fb927 \
-            --instance-type t2.medium \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Temp-EC2-Test}]' \
-            --key-name j_ \
-            --security-group-ids sg-050ccad9abad062ad \
-            --query 'Instances[0].[InstanceId,PublicIpAddress]' \
-            --output text)
-
-          INSTANCE_ID=$(echo "$INSTANCE_DETAILS" | awk '{print $1}')
-          PUBLIC_IP=$(echo "$INSTANCE_DETAILS" | awk '{print $2}')
-
-          echo "Instance ID: $INSTANCE_ID"
-          echo "Public IP: $PUBLIC_IP"
-
-          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
-          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-
-          echo "Waiting for EC2 to be in 'running' state...."
-          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-
-          echo "EC2 Instance is now running."
-
-
-
-      - name: Get EC2 Public IP
+      - name: Build & Push Backend Image
         run: |
-          echo "Fetching EC2 Public IP..."
-          PUBLIC_IP=$(aws ec2 describe-instances \
-            --instance-ids $INSTANCE_ID \
-            --query 'Reservations[0].Instances[0].PublicIpAddress' \
-            --output text)
+          docker build \
+            --build-arg DB_USER=$DB_USER \
+            --build-arg DB_PASSWORD=$DB_PASSWORD \
+            --build-arg DB_HOST=$DB_HOST \
+            --build-arg DB_PORT=$DB_PORT \
+            --build-arg DB_NAME=$DB_NAME \
+            -t $BACKEND_IMAGE:latest main-repo/backend
+          docker push $BACKEND_IMAGE:latest
 
-          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
-            echo "Error: Could not fetch EC2 Public IP. Exiting."
-            exit 1
-          fi
-
-          echo "EC2 Public IP: $PUBLIC_IP"
-          echo "PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
-
-      - name: Verify Public IP is Set
+      - name: Build & Push Frontend Image
         run: |
-          echo "Using EC2 Public IP: $PUBLIC_IP"
+          docker build -t $FRONTEND_IMAGE:latest main-repo/frontend
+          docker push $FRONTEND_IMAGE:latest
 
-
-      - name: Setup SSH Key
+      - name: Build & Push Notifier Image
         run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key.pem
-          chmod 600 private_key.pem
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key_1.pem
-          chmod 600 private_key_1.pem
-
-      - name: Wait for EC2 SSH to be available
-        run: |
-          echo "Waiting for SSH to be available on EC2..."
-          for i in {1..10}; do
-            nc -z -v -w5 $PUBLIC_IP 22 && break
-            echo "Retrying in 10 seconds..."
-            sleep 10
-          done
-          echo "EC2 SSH is now available!"
-
-      - name: SSH into EC2 and Deploy
-        run: |
-          ssh -o StrictHostKeyChecking=no -i private_key.pem ec2-user@$PUBLIC_IP << 'EOF'
-            echo "Updating packages and installing dependencies..."
-            sudo yum update -q -y
-            sudo yum install -q -y git docker
-
-            echo "Starting Docker service..."
-            sudo systemctl start docker
-            sudo systemctl enable docker
-            sudo usermod -aG docker ec2-user
-            newgrp docker
-
-            echo "Installing Docker Compose..."
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-            docker-compose --version
-
-            echo "Cloning or updating repository..."
-            if [ -d "jobDashboard" ]; then
-              cd jobDashboard && git pull
-            else
-              git clone https://github.com/sureshselvadurai/jobDashboard.git && cd jobDashboard
-            fi
-
-            echo "Starting application with Docker Compose..."
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d --build
-          EOF
-
-
-      - name: Wait for Backend Server to be Ready
-        run: |
-          echo "Waiting for backend service to be available..."
-          for i in {1..10}; do
-            curl -f http://$PUBLIC_IP:8000/jobs && break
-            echo "Backend is not up yet. Retrying in 10 seconds..."
-            sleep 10
-          done || { echo "Backend failed to start in time"; exit 1; }
-
-      - name: Terminate Temporary EC2 Instance
-        run: |
-          aws ec2 terminate-instances --instance-ids $INSTANCE_ID
-
-      - name: Authenticate to AWS ECR
-        run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-
-      - name: Build and Push Docker Images to ECR
-        run: |
-          set -e  # Exit on error for better debugging
-
-          BACKEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
-          FRONTEND_IMAGE_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
-
-          echo "🔍 Cloning the repository..."
-          git clone --depth 1 https://github.com/sureshselvadurai/jobDashboard.git
-          
-          cd jobDashboard
-
-          echo "🔍 Checking backend directory..."
-          if [ ! -d "backend" ]; then
-            echo "❌ Backend directory not found!"
-            exit 1
-          fi
-
-          echo "🔍 Checking backend Dockerfile..."
-          if [ ! -f "backend/Dockerfile" ]; then
-            echo "❌ Backend Dockerfile not found!"
-            exit 1
-          fi
-
-          echo "🚀 Building all services using Docker Compose..."
-          docker compose build --progress=plain  # Show detailed build logs
-
-          echo "🐳 Available Docker images:"
-          docker images
-          
-          echo "🔍 Verifying backend image build..."
-          BACKEND_IMAGE_ID=$(docker images -q jobdashboard-backend)
-          if [ -z "$BACKEND_IMAGE_ID" ]; then
-            echo "❌ Backend image failed to build!"
-            exit 1
-          fi
-          echo "✅ Backend image built successfully: $BACKEND_IMAGE_ID"
-
-          echo "🔍 Verifying frontend image build..."
-          FRONTEND_IMAGE_ID=$(docker images -q jobdashboard-frontend)
-          if [ -z "$FRONTEND_IMAGE_ID" ]; then
-            echo "❌ Frontend image failed to build.!"
-            exit 1
-          fi
-          echo "✅ Frontend image built successfully: $FRONTEND_IMAGE_ID"
-
-          echo "🚀 Tagging and pushing backend image..."
-          docker tag jobdashboard-backend $BACKEND_IMAGE_URI
-          docker push $BACKEND_IMAGE_URI
-          echo "✅ Backend image pushed to ECR: $BACKEND_IMAGE_URI"
-          
-          echo "🚀 Tagging and pushing frontend image..."
-          docker tag jobdashboard-frontend $FRONTEND_IMAGE_URI
-          docker push $FRONTEND_IMAGE_URI
-          echo "✅ Frontend image pushed to ECR: $FRONTEND_IMAGE_URI"
-
-
-      - name: Set Environment Variables
-        run: |
-          echo "🔍 Fetching EC2 Host for instance 'j_server'..."
-          
-          # Fetch the instance's Public IP using AWS CLI
-          EC2_HOST=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=j_server" "Name=instance-state-name,Values=running" \
-            --query "Reservations[*].Instances[*].PublicIpAddress" \
-            --output text)
-
-          # Check if EC2_HOST is found
-          if [[ -z "$EC2_HOST" ]]; then
-            echo "❌ No running instance found with the name 'j_server'!"
-            exit 1
-          fi
-
-          echo "✅ EC2 Host found: $EC2_HOST"
-
-          # Set environment variables for later steps
-          echo "EC2_USER=${{ secrets.EC2_USER }}" >> $GITHUB_ENV
-          echo "EC2_HOST=$EC2_HOST" >> $GITHUB_ENV
-
-      - name: Setup SSH Key
-        run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > private_key1.pem
-          chmod 600 private_key1.pem
-
-      - name: Deploy Backend and Frontend to QA EC2
-        run: |
-          echo "Using the following connection details:"
-          echo "EC2 User: $EC2_USER"
-          echo "EC2 Host: $EC2_HOST"
-      
-          # Debugging: Print image URIs before SSH
-          echo "🔍 Resolving Image URIs..."
-
-          if [[ -z "$BACKEND_IMAGE_URI" || -z "$FRONTEND_IMAGE_URI" ]]; then
-            echo "❌ Image URIs are not set. Check GitHub secrets."
-            exit 1
-          fi
-      
-          ssh -o StrictHostKeyChecking=no -i private_key1.pem ec2-user@3.91.23.104 << EOF
-            echo "✅ Connected successfully!"
-          
-            echo "🗑️ Removing existing deployment directory (if exists)..."
-            rm -rf /home/ec2-user/job_dashboard_deploy
-            
-            echo "📂 Creating a fresh deployment directory..."
-            mkdir -p /home/ec2-user/job_dashboard_deploy
-            cd /home/ec2-user/job_dashboard_deploy
-          
-            echo "📥 Logging into AWS ECR..."
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          
-            echo "🗑️ Stopping and removing old containers..."
-            docker stop jobdashboard-backend jobdashboard-frontend || true
-            docker rm jobdashboard-backend jobdashboard-frontend || true
-          
-            echo "🗑️ Removing old images..."
-            docker rmi -f \$(docker images -q) || true
-          
-            echo "📥 Pulling the latest images..."
-            docker pull "$BACKEND_IMAGE_URI"
-            docker pull "$FRONTEND_IMAGE_URI"
-          
-            echo "🚀 Running backend container..."
-            docker run -d --name jobdashboard-backend --env-file /home/ec2-user/config/.env -p 8000:8000 "$BACKEND_IMAGE_URI"
-          
-            echo "🚀 Running frontend container..."
-            docker run -d --name jobdashboard-frontend -p 5500:5500 "$FRONTEND_IMAGE_URI"
-          
-            echo "🎉 Deployment successful!"
-          EOF
-        env:
-          EC2_USER: "${{ secrets.EC2_USER }}"
-          EC2_HOST: "${{ secrets.EC2_HOST }}"
-          BACKEND_IMAGE_URI: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_BACKEND_REPOSITORY }}:latest"
-          FRONTEND_IMAGE_URI: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_FRONTEND_REPOSITORY }}:latest"
-
-      - name: Verify Deployment
-        run: |
-
-          echo "🔍 Verifying Backend is accessible..."
-          for i in {1..10}; do
-            curl -f http://$EC2_HOST:8000/jobs && break
-            echo "Backend is not up yet. Retrying in 10 seconds...."
-            sleep 10
-          done || { echo "❌ Backend failed to start in time"; exit 1; }
-
-          echo "✅ Backend is up!"
-          
-          echo "🔍 Verifying Frontend is accessible..."
-          for i in {1..10}; do
-            curl -f https://$EC2_HOST:5500 && break
-            echo "Frontend is not up yet. Retrying in 10 seconds..."
-            sleep 10
-          done || { echo "❌ Frontend failed to start in time"; exit 1; }
-
-          echo "✅ Frontend is up!"
+          docker build \
+            --build-arg SLACK_WEBHOOK_URL=$SLACK_WEBHOOK_URL \
+            -t $NOTIFIER_IMAGE:latest main-repo/notifier
+          docker push $NOTIFIER_IMAGE:latest
