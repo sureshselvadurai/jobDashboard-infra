@@ -59,11 +59,12 @@ jobs:
           echo "📡 Fetching FastAPI openapi.json..."
           curl -s http://localhost:8000/openapi.json | jq '.paths' || curl -s http://localhost:8000/openapi.json
 
-      - name: 🔍 Call refresh-and-notify API
+      - name: 🔍 Call refresh-and-notify API inside backend container
         run: |
-          response=$(curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify)
-          if [ "$response" -ne 200 ]; then
-            echo "❌ Health check failed with status $response"
+          docker exec job_backend curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify > status_code.txt
+          code=$(cat status_code.txt)
+          if [ "$code" -ne 200 ]; then
+            echo "❌ Health check failed with status $code"
             cat result.json
             exit 1
           fi
