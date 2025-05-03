@@ -54,11 +54,6 @@ jobs:
           docker compose --env-file .env up -d
           sleep 30
 
-      - name: 🧪 Debug - List available FastAPI routes
-        run: |
-          echo "📡 Fetching FastAPI openapi.json..."
-          docker exec job_backend curl -s http://localhost:8000/openapi.json | jq '.paths' || docker exec job_backend curl -s http://localhost:8000/openapi.json
-
       - name: 🔍  Call refresh-and-notify API inside backend container
         run: |
           docker exec job_backend curl http://localhost:8000/notify/refresh-and-notify -o /tmp/result.json
