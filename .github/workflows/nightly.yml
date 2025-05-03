@@ -1,28 +1,41 @@
 name: Nightly Test and ECR Push
 
 on:
+  # 🔁 Scheduled run (monthly)
   schedule:
     - cron: '0 8 10 * *'
+
+  # 🧑‍💻 Manual trigger via UI
   workflow_dispatch:
 
+  # 🔃 Push-based trigger (only runs if commit message includes [push-ecr] or [force-push])
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+
 env:
+  # 📦 GitHub Repo
   REPO: https://github.com/sureshselvadurai/jobDashboard.git
+
+  # 🌍 AWS Region
   REGION: us-east-1
 
-  # ECR
+  # 🔐 ECR Registry & Image Paths
   ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
   BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-backend
   FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-frontend
   NOTIFIER_IMAGE: ${{ secrets.ECR_REGISTRY }}/job-notifier
 
-  # DB ENV (used by backend)
+  # 🛠️ Environment variables for backend container
   DB_USER: ${{ secrets.DB_USER }}
   DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
   DB_HOST: ${{ secrets.DB_HOST }}
   DB_PORT: ${{ secrets.DB_PORT }}
   DB_NAME: ${{ secrets.DB_NAME }}
 
-  # Notifier ENV
+  # 🔔 Notifier secret
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
@@ -31,14 +44,15 @@ jobs:
     name: Run Compose & Health Check
     runs-on: ubuntu-latest
     environment: dev
+
     steps:
-      - name: Checkout Infra Repo
+      - name: ✅ Checkout Infra Repo
         uses: actions/checkout@v3
 
-      - name: Clone Main Repo
+      - name: 🧱 Clone Main App Repo
         run: git clone $REPO main-repo
 
-      - name: Create .env for Docker Compose
+      - name: ⚙️ Generate .env file
         run: |
           cat <<EOF > main-repo/.env
           DB_USER=${{ env.DB_USER }}
@@ -49,13 +63,13 @@ jobs:
           SLACK_WEBHOOK_URL=${{ env.SLACK_WEBHOOK_URL }}
           EOF
 
-      - name: Start Docker Compose
+      - name: 🐳 Start Docker Compose
         run: |
           cd main-repo
           docker compose --env-file .env up -d
           sleep 30
 
-      - name: Call /jobs/refresh-and-notify API
+      - name: 🔍 Call refresh-and-notify API
         run: |
           response=$(curl -s -o result.json -w "%{http_code}" http://localhost:8000/jobs/refresh-and-notify/)
           if [ "$response" -ne 200 ]; then
@@ -70,27 +84,38 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     needs: run-test
+
     steps:
-      - name: Checkout Infra Repo
+      - name: 🚦 Check commit message trigger
+        if: github.event_name == 'push'
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          echo "📘 Commit Message: $COMMIT_MSG"
+          if [[ "$COMMIT_MSG" != *"[push-ecr]"* && "$COMMIT_MSG" != *"[force-push]"* ]]; then
+            echo "⏭️ Skipping image push (trigger keyword not found)."
+            exit 1
+          fi
+
+      - name: ✅ Checkout Infra Repo
         uses: actions/checkout@v3
 
-      - name: Clone Main Repo
+      - name: 🧱 Clone Main App Repo
         run: git clone $REPO main-repo
 
-      - name: Configure AWS Credentials
+      - name: 🔐 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
+          aws-region: ${{ env.REGION }}
 
-      - name: Login to ECR
+      - name: 🔑 Login to ECR
         run: |
           aws ecr get-login-password --region $REGION | \
-            docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker login --username AWS --password-stdin $ECR_REGISTRY
 
-      - name: Build & Push Backend Image
+      - name: 🚀 Build & Push Backend Image
         run: |
           docker build \
             --build-arg DB_USER=$DB_USER \
@@ -101,12 +126,12 @@ jobs:
             -t $BACKEND_IMAGE:latest main-repo/backend
           docker push $BACKEND_IMAGE:latest
 
-      - name: Build & Push Frontend Image
+      - name: 🚀 Build & Push Frontend Image
         run: |
           docker build -t $FRONTEND_IMAGE:latest main-repo/frontend
           docker push $FRONTEND_IMAGE:latest
 
-      - name: Build & Push Notifier Image
+      - name: 🚀 Build & Push Notifier Image
         run: |
           docker build \
             --build-arg SLACK_WEBHOOK_URL=$SLACK_WEBHOOK_URL \
