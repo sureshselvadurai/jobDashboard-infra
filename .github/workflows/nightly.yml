@@ -54,7 +54,7 @@ jobs:
           docker compose --env-file .env up -d
           sleep 30
 
-      - name: 🧪 Debug: List available FastAPI routes
+      - name: 🧪 Debug- List available FastAPI routes
         run: |
           echo "📡 Fetching FastAPI openapi.json..."
           curl -s http://localhost:8000/openapi.json | jq '.paths' || curl -s http://localhost:8000/openapi.json
