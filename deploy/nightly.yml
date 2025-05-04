@@ -1,0 +1,128 @@
+name: Nightly Test and ECR Push
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # runs daily at 8 AM UTC
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+
+env:
+  REPO: https://github.com/sureshselvadurai/jobDashboard.git
+  REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-backend
+  FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-frontend
+  NOTIFIER_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-notifier
+
+jobs:
+  run-test:
+    name: Run Compose & Health Check
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: ✅ Checkout Infra Repo
+        uses: actions/checkout@v3
+
+      - name: 🧱 Clone Main App Repo
+        run: git clone $REPO main-repo
+
+      - name: ⚙️ Generate .env file
+        run: |
+          cat <<EOF > main-repo/.env
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+          EOF
+
+      - name: 🐳 Start Docker Compose
+        run: |
+          cd main-repo
+          docker compose --env-file .env up -d
+          sleep 30
+
+      - name: 🔍 Call - refresh-and-notify API inside backend container
+        run: |
+          docker exec job_backend curl http://localhost:8000/notify/refresh-and-notify -o /tmp/result.json
+          docker exec job_backend cat /tmp/result.json
+
+  push-images:
+    name: Build, Push Images & Deploy to Dev K8s
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: run-test
+
+    steps:
+      - name: 🚦 Check commit message trigger
+        if: github.event_name == 'push'
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          echo "📘 Commit Message: $COMMIT_MSG"
+          if [[ "$COMMIT_MSG" != *"[push-ecr]"* && "$COMMIT_MSG" != *"[force-push]"* ]]; then
+            echo "⏭️ Skipping image push (trigger keyword not found)."
+            exit 0
+          fi
+
+      - name: ✅ Checkout Infra Repo
+        uses: actions/checkout@v3
+
+      - name: 🧱 Clone Main App Repo
+        run: git clone $REPO main-repo
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: 🔑 Login to ECR
+        run: |
+          aws ecr get-login-password --region $REGION | \
+          docker login --username AWS --password-stdin $ECR_REGISTRY
+
+      - name: 🚀 Build & Push Backend Image
+        run: |
+          docker build \
+            --build-arg DB_USER=${{ secrets.DB_USER }} \
+            --build-arg DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            --build-arg DB_HOST=${{ secrets.DB_HOST }} \
+            --build-arg DB_PORT=${{ secrets.DB_PORT }} \
+            --build-arg DB_NAME=${{ secrets.DB_NAME }} \
+            -t $BACKEND_IMAGE:latest main-repo/backend
+          docker push $BACKEND_IMAGE:latest
+
+      - name: 🚀 Build & Push Frontend Image
+        run: |
+          docker build -t $FRONTEND_IMAGE:latest main-repo/frontend
+          docker push $FRONTEND_IMAGE:latest
+
+      - name: 🚀 Build & Push Notifier Image
+        run: |
+          docker build \
+            --build-arg SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
+            -t $NOTIFIER_IMAGE:latest main-repo/notifier
+          docker push $NOTIFIER_IMAGE:latest
+
+      - name: 📦 Deploy to Dev K8s Cluster
+        run: |
+          aws eks update-kubeconfig --region $REGION --name job-dev-cluster
+
+          kubectl delete secret job-secrets --ignore-not-found
+          kubectl create secret generic job-secrets \
+            --from-literal=DB_USER=${{ secrets.DB_USER }} \
+            --from-literal=DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            --from-literal=DB_HOST=${{ secrets.DB_HOST }} \
+            --from-literal=DB_PORT=${{ secrets.DB_PORT }} \
+            --from-literal=DB_NAME=${{ secrets.DB_NAME }} \
+            --from-literal=SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
+            --from-literal=NOTIFIER_URL=${{ secrets.NOTIFIER_URL }} \
+            --from-literal=BACKEND_URL=${{ secrets.BACKEND_URL }} \
+            --from-literal=FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
+          kubectl rollout restart deployment job-backend-blue || true
+          kubectl rollout restart deployment job-frontend-blue || true
+          kubectl rollout restart deployment job-notifier-blue || true
