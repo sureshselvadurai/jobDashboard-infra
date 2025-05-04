@@ -1,0 +1,93 @@
+name: Deploy Dev Services with Smart Blue-Green Logic
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/dev/**/deployment-*.yaml'
+      - 'infra/dev/**/service.yaml'
+
+env:
+  REGION: us-east-1
+
+jobs:
+  deploy-dev:
+    name: Blue-Green Deploy for Dev
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: ✅ Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.REGION }}
+
+      - name: 📥 Install kubectl & yq
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/kubectl
+          sudo snap install yq
+
+      - name: ☁️ Setup Kubeconfig for Dev
+        run: |
+          aws eks update-kubeconfig --region us-east-1 --name job-dev-cluster
+
+      - name: 🕵️ Determine Changed Color and Files
+        id: detect
+        run: |
+          echo "changed_colors=" >> $GITHUB_ENV
+
+          git fetch origin main --depth=2 || true
+          git diff --name-only HEAD^ HEAD > changed.txt
+
+          for svc in job-backend job-frontend job-notifier; do
+            for color in blue green; do
+              file=infra/dev/$svc/deployment-$color.yaml
+              if grep -q "$file" changed.txt; then
+                echo "🎨 $svc $color changed"
+                yq ".spec.template.spec.containers[0].image" $file > new_image.txt || echo ""
+                git show HEAD~1:$file | yq ".spec.template.spec.containers[0].image" > old_image.txt || echo ""
+
+                if ! diff new_image.txt old_image.txt > /dev/null; then
+                  echo "$svc $color rollout" >> rollout.txt
+                fi
+              fi
+            done
+
+            svc_file=infra/dev/$svc/service.yaml
+            if grep -q "$svc_file" changed.txt; then
+              active=$(yq ".spec.selector.version" $svc_file)
+              echo "$svc $active switch" >> switch.txt
+            fi
+          done
+
+      - name: 🚀 Apply Changed Deployments (Image Only)
+        if: hashFiles('rollout.txt') != ''
+        run: |
+          while read -r svc color action; do
+            if [ "$action" = "rollout" ]; then
+              echo "🔁 Rolling out image for $svc ($color)"
+              kubectl apply -f infra/dev/$svc/deployment-$color.yaml
+              kubectl rollout restart deployment/${svc}-${color}
+            fi
+          done < rollout.txt
+
+      - name: 🔄 Blue-Green Switch Based on Service Change
+        if: hashFiles('switch.txt') != ''
+        run: |
+          while read -r svc color action; do
+            if [ "$action" = "switch" ]; then
+              echo "🚦 Switching $svc service to $color"
+              kubectl apply -f infra/dev/$svc/deployment-$color.yaml
+              kubectl rollout status deployment/${svc}-${color}
+              kubectl patch service $svc -p \
+                '{"spec": {"selector": {"app": "'$svc'", "version": "'$color'"}}}'
+            fi
+          done < switch.txt

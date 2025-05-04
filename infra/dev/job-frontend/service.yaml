@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-frontend
+spec:
+  selector:
+    app: job-frontend
+    version: blue
+  ports:
+    - port: 80
+      targetPort: 5500
+  type: LoadBalancer
