@@ -7,6 +7,7 @@ on:
     paths:
       - 'infra/prod/**/deployment-*.yaml'
       - 'infra/prod/**/service.yaml'
+      - 'infra/prod/job-ingress.yaml'  
 
 env:
   REGION: us-east-1
@@ -105,3 +106,8 @@ jobs:
                 '{"spec": {"selector": {"app": "'$svc'", "version": "'$color'"}}}'
             fi
           done < switch.txt
+
+      - name: 🌐 Apply Ingress for HTTPS (Always)
+        run: |
+          echo "🌍 Applying job-ingress.yaml for HTTPS routing"
+          kubectl apply -f infra/prod/job-ingress.yaml

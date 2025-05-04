@@ -1,0 +1,44 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: job-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:425999196557:certificate/a051c7b7-798a-4a60-9b29-ad27e15bfcf7
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  rules:
+    - host: backend.sureshraja.live
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: job-backend
+                port:
+                  number: 80
+    - host: app.sureshraja.live
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: job-frontend
+                port:
+                  number: 80
+    - host: notifier.sureshraja.live
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: job-notifier
+                port:
+                  number: 80
