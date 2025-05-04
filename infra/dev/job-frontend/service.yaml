@@ -5,7 +5,7 @@ metadata:
 spec:
   selector:
     app: job-frontend
-    version: blue
+    version: green
   ports:
     - port: 80
       targetPort: 5500
