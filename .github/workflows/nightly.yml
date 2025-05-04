@@ -62,7 +62,7 @@ jobs:
           echo "📘 Commit Message: $COMMIT_MSG"
           if [[ "$COMMIT_MSG" != *"[push-ecr]"* && "$COMMIT_MSG" != *"[force-push]"* ]]; then
             echo "⏭️ Skipping image push (trigger keyword not found)."
-            exit 1
+            exit 0
           fi
 
       - name: ✅ Checkout Infra Repo
