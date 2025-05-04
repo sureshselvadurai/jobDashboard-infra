@@ -5,7 +5,7 @@ metadata:
 spec:
   selector:
     app: job-notifier
-    version: blue
+    version: green
   ports:
     - port: 80
       targetPort: 8500
