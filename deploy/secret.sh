@@ -32,3 +32,8 @@ kubectl apply -f infra/qa/job-backend/deployment-blue.yaml \
 
 kubectl get pods -l app=job-backend -o wide
 kubectl exec -it job-backend-blue-6fb4bb96b8-ktrs2  -- /bin/sh
+
+kubectl apply -f infra/dev/job-backend/deployment-green.yaml
+
+# (Optional) Check rollout status
+kubectl rollout status deployment/job-backend-green
