@@ -77,27 +77,22 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
+          aws-region: ${{ env.REGION }}
 
       - name: 🔑 Login to ECR
         run: |
           aws ecr get-login-password --region $REGION | \
           docker login --username AWS --password-stdin $ECR_REGISTRY
 
-      - name: ⚙️ Generate .env file
-        run: |
-          cat <<EOF > main-repo/.env
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
-          EOF
-
       - name: 🚀 Build & Push Backend Image
         run: |
-          docker build --env-file main-repo/.env -t $BACKEND_IMAGE:latest main-repo/backend
+          docker build \
+            --build-arg DB_USER=${{ secrets.DB_USER }} \
+            --build-arg DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            --build-arg DB_HOST=${{ secrets.DB_HOST }} \
+            --build-arg DB_PORT=${{ secrets.DB_PORT }} \
+            --build-arg DB_NAME=${{ secrets.DB_NAME }} \
+            -t $BACKEND_IMAGE:latest main-repo/backend
           docker push $BACKEND_IMAGE:latest
 
       - name: 🚀 Build & Push Frontend Image
@@ -107,5 +102,7 @@ jobs:
 
       - name: 🚀 Build & Push Notifier Image
         run: |
-          docker build --env-file main-repo/.env -t $NOTIFIER_IMAGE:latest main-repo/notifier
+          docker build \
+            --build-arg SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
+            -t $NOTIFIER_IMAGE:latest main-repo/notifier
           docker push $NOTIFIER_IMAGE:latest
