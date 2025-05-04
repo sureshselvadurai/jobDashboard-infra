@@ -49,7 +49,7 @@ jobs:
           docker exec job_backend cat /tmp/result.json
 
   push-images:
-    name: Build and Push Images to ECR
+    name: Build, Push Images & Deploy to Dev K8s
     runs-on: ubuntu-latest
     environment: dev
     needs: run-test
@@ -77,7 +77,7 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ env.REGION }}
+          aws-region: us-east-1
 
       - name: 🔑 Login to ECR
         run: |
@@ -106,3 +106,23 @@ jobs:
             --build-arg SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
             -t $NOTIFIER_IMAGE:latest main-repo/notifier
           docker push $NOTIFIER_IMAGE:latest
+
+      - name: 📦 Deploy to Dev K8s Cluster
+        run: |
+          aws eks update-kubeconfig --region $REGION --name job-dev-cluster
+
+          kubectl delete secret job-secrets --ignore-not-found
+          kubectl create secret generic job-secrets \
+            --from-literal=DaB_USER=${{ secrets.DB_USER }} \
+            --from-literal=DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+            --from-literal=DB_HOST=${{ secrets.DB_HOST }} \
+            --from-literal=DB_PORT=${{ secrets.DB_PORT }} \
+            --from-literal=DB_NAME=${{ secrets.DB_NAME }} \
+            --from-literal=SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }} \
+            --from-literal=NOTIFIER_URL=${{ secrets.NOTIFIER_URL }} \
+            --from-literal=BACKEND_URL=${{ secrets.BACKEND_URL }} \
+            --from-literal=FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
+          kubectl rollout restart deployment job-backend-blue || true
+          kubectl rollout restart deployment job-frontend-blue || true
+          kubectl rollout restart deployment job-notifier-blue || true

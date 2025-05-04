@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-frontend-blue
+  labels:
+    app: job-frontend
+    version: blue
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: job-frontend
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: job-frontend
+        version: blue
+    spec:
+      containers:
+        - name: job-frontend
+          image: 425999196557.dkr.ecr.us-east-1.amazonaws.com/qa/job-frontend:latest
+          ports:
+            - containerPort: 5500
+          envFrom:
+            - secretRef:
+                name: job-secrets

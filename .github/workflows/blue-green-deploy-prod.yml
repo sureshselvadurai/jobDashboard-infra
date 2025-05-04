@@ -1,21 +1,21 @@
-name: Deploy Dev Services with Smart Blue-Green Logic
+name: Deploy prod Services with Smart Blue-Green Logic
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'infra/dev/**/deployment-*.yaml'
-      - 'infra/dev/**/service.yaml'
+      - 'infra/prod/**/deployment-*.yaml'
+      - 'infra/prod/**/service.yaml'
 
 env:
   REGION: us-east-1
 
 jobs:
-  deploy-dev:
-    name: Blue-Green Deploy for Dev
+  deploy-prod:
+    name: Blue-Green Deploy for prod
     runs-on: ubuntu-latest
-    environment: dev
+    environment: prod
 
     steps:
       - name: ✅ Checkout Code
@@ -35,9 +35,9 @@ jobs:
           chmod +x kubectl && sudo mv kubectl /usr/local/bin/kubectl
           sudo snap install yq
 
-      - name: ☁️ Setup Kubeconfig for Dev
+      - name: ☁️ Setup Kubeconfig for prod
         run: |
-          aws eks update-kubeconfig --region us-east-1 --name job-dev-cluster
+          aws eks update-kubeconfig --region us-east-1 --name job-prod-cluster
 
       - name: 🕵️ Determine Changed Color and Files
         id: detect
@@ -49,26 +49,26 @@ jobs:
 
           for svc in job-backend job-frontend job-notifier; do
             for color in blue green; do
-              file=infra/dev/$svc/deployment-$color.yaml
+              file=infra/prod/$svc/deployment-$color.yaml
               if grep -q "$file" changed.txt; then
                 echo "🎨 $svc $color changed"
                 yq ".spec.template.spec.containers[0].image" $file > new_image.txt || echo ""
                 git show HEAD~1:$file | yq ".spec.template.spec.containers[0].image" > old_image.txt || echo ""
 
-                if ! diff new_image.txt old_image.txt > /dev/null; then
+                if ! diff new_image.txt old_image.txt > /prod/null; then
                   echo "$svc $color rollout" >> rollout.txt
                 fi
               fi
             done
 
-            svc_file=infra/dev/$svc/service.yaml
+            svc_file=infra/prod/$svc/service.yaml
             if grep -q "$svc_file" changed.txt; then
               active=$(yq ".spec.selector.version" $svc_file)
               echo "$svc $active switch" >> switch.txt
             fi
           done
 
-      - name: 📦 Deploy to dev K8s Cluster
+      - name: 📦 Deploy to prod K8s Cluster
         run: |
           
           kubectl delete secret job-secrets --ignore-not-found
@@ -89,7 +89,7 @@ jobs:
           while read -r svc color action; do
             if [ "$action" = "rollout" ]; then
               echo "🔁 Rolling out image for $svc ($color)"
-              kubectl apply -f infra/dev/$svc/deployment-$color.yaml
+              kubectl apply -f infra/prod/$svc/deployment-$color.yaml
               kubectl rollout restart deployment/${svc}-${color}
             fi
           done < rollout.txt
@@ -100,7 +100,7 @@ jobs:
           while read -r svc color action; do
             if [ "$action" = "switch" ]; then
               echo "🚦 Switching $svc service to $color"
-              kubectl apply -f infra/dev/$svc/deployment-$color.yaml
+              kubectl apply -f infra/prod/$svc/deployment-$color.yaml
               kubectl rollout status deployment/${svc}-${color}
               kubectl patch service $svc -p \
                 '{"spec": {"selector": {"app": "'$svc'", "version": "'$color'"}}}'

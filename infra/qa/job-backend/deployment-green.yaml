@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-backend-green
+  labels:
+    app: job-backend
+    version: green
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: job-backend
+      version: green
+  template:
+    metadata:
+      labels:
+        app: job-backend
+        version: green
+    spec:
+      containers:
+        - name: job-backend
+          image: 425999196557.dkr.ecr.us-east-1.amazonaws.com/prod/job-backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: job-secrets
+
