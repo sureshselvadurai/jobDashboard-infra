@@ -2,7 +2,7 @@ name: Nightly Test and ECR Push
 
 on:
   schedule:
-    - cron: '0 8 10 * *'
+    - cron: '0 8 * * *'  # runs daily at 8 AM UTC
   workflow_dispatch:
   push:
     branches:
@@ -17,12 +17,6 @@ env:
   BACKEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-backend
   FRONTEND_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-frontend
   NOTIFIER_IMAGE: ${{ secrets.ECR_REGISTRY }}/dev/job-notifier
-  DB_USER: ${{ secrets.DB_USER }}
-  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-  DB_HOST: ${{ secrets.DB_HOST }}
-  DB_PORT: ${{ secrets.DB_PORT }}
-  DB_NAME: ${{ secrets.DB_NAME }}
-  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
   run-test:
@@ -40,12 +34,16 @@ jobs:
       - name: ⚙️ Generate .env file
         run: |
           cat <<EOF > main-repo/.env
-          DB_USER=${{ env.DB_USER }}
-          DB_PASSWORD=${{ env.DB_PASSWORD }}
-          DB_HOST=${{ env.DB_HOST }}
-          DB_PORT=${{ env.DB_PORT }}
-          DB_NAME=${{ env.DB_NAME }}
-          SLACK_WEBHOOK_URL=${{ env.SLACK_WEBHOOK_URL }}
+          MYSQL_ROOT_PASSWORD=${{ secrets.DB_PASSWORD }}
+          MYSQL_DATABASE=${{ secrets.DB_NAME }}
+          MYSQL_USER=${{ secrets.DB_USER }}
+          MYSQL_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
           EOF
 
       - name: 🐳 Start Docker Compose
@@ -95,15 +93,24 @@ jobs:
           aws ecr get-login-password --region $REGION | \
           docker login --username AWS --password-stdin $ECR_REGISTRY
 
-      - name: 🚀  Build & Push Backend Image
+      - name: ⚙️ Generate .env file
         run: |
-          docker build \
-            --build-arg DB_USER=$DB_USER \
-            --build-arg DB_PASSWORD=$DB_PASSWORD \
-            --build-arg DB_HOST=$DB_HOST \
-            --build-arg DB_PORT=$DB_PORT \
-            --build-arg DB_NAME=$DB_NAME \
-            -t $BACKEND_IMAGE:latest main-repo/backend
+          cat <<EOF > main-repo/.env
+          MYSQL_ROOT_PASSWORD=${{ secrets.DB_PASSWORD }}
+          MYSQL_DATABASE=${{ secrets.DB_NAME }}
+          MYSQL_USER=${{ secrets.DB_USER }}
+          MYSQL_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+          EOF
+
+      - name: 🚀 Build & Push Backend Image
+        run: |
+          docker build --env-file main-repo/.env -t $BACKEND_IMAGE:latest main-repo/backend
           docker push $BACKEND_IMAGE:latest
 
       - name: 🚀 Build & Push Frontend Image
@@ -113,7 +120,5 @@ jobs:
 
       - name: 🚀 Build & Push Notifier Image
         run: |
-          docker build \
-            --build-arg SLACK_WEBHOOK_URL=$SLACK_WEBHOOK_URL \
-            -t $NOTIFIER_IMAGE:latest main-repo/notifier
+          docker build --env-file main-repo/.env -t $NOTIFIER_IMAGE:latest main-repo/notifier
           docker push $NOTIFIER_IMAGE:latest
