@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: job-backend
-          image: 425999196557.dkr.ecr.us-east-1.amazonaws.com/prod/job-backend:v1.1.0
+          image: 425999196557.dkr.ecr.us-east-1.amazonaws.com/prod/job-backend:latest
           ports:
             - containerPort: 8000
           envFrom:
